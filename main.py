@@ -12,12 +12,18 @@ import json
 
 app = Flask(__name__)
 # yolo model 불러오기
-model = torch.hub.load('yolov5-master', 'custom', path='yolov5-master/models/best.pt', source='local')
-model.conf = 0.20  # NMS confidence threshold
-model.iou = 0.20 # NMS IoU threshold
-max_det = 1
+model_damage = torch.hub.load('yolov5-master', 'custom', path='yolov5-master/models/DamageDetect.pt', source='local')
+model_part = torch.hub.load('yolov5-master', 'custom', path='yolov5-master/models/PartDetect.pt', source='local')
 
-category_class = {
+model_damage.conf = 0.2  # NMS confidence threshold
+model_damage.iou = 0.2 # NMS IoU threshold
+model_damage.max_det = 1
+
+model_part.conf = 0.2  # NMS confidence threshold
+model_part.iou = 0.2 # NMS IoU threshold
+model_part.max_det = 1
+
+category_class_damage = {
     '203': '덕트손상', # 덕트 손상 (덕트)
     '209': '연결불량', # 연결 불량 (덕트)
     '212': '테이프불량', # 테이프 불량 (덕트)
@@ -33,8 +39,26 @@ category_class = {
     '210': '연계처리불량', # 연계 처리 불량 (보온재)
     '213': '함석처리불량' # 함석 처리 불량 (보온재)
 }
-print(category_class['203'])
-print(11)
+
+category_class_part = {
+    '203': '덕트', # 덕트 손상 (덕트)
+    '209': '덕트', # 연결 불량 (덕트)
+    '212': '덕트', # 테이프 불량 (덕트)
+    '401': '선박배관', # 볼트 체결 불량 (선박 배관)
+    '402': '선박배관', # 파이프 손상 (선박 배관)
+    '202': '선체', # 단차 (선체)
+    '206': '선체', # 보강재 설치 불량 (선체)
+    '205': '케이블', # 바인딩 불량 (케이블)
+    '208': '케이블', # 설치 불량 (케이블)
+    '211': '케이블', # 케이블 손상 (케이블)
+    '201': '보온재', # 가공 불량 (보온재)
+    '207': '보온재', # 보온재 손상 (보온재)
+    '210': '보온재', # 연계 처리 불량 (보온재)
+    '213': '보온재' # 함석 처리 불량 (보온재)
+}
+
+
+
 # POST 통신으로 들어오는 이미지를 저장하고 모델로 추론하는 과정
 def save_image(file):
     file.save('./temp/' + file.filename)
@@ -43,46 +67,100 @@ def save_image(file):
 def web():
     if request.method == 'POST':
         file = request.files['file']
-        save_image(file)  # 들어오는 이미지 저장
-        train_img = './temp/' + file.filename
-        results = model(train_img)
+        save_image(file)  # Post 받은 이미지 저장
+        train_img = './temp/' + file.filename # 받은 이미지 경로
+
+        results_dict = { # return할 결과값 지정
+            "type": "",
+            'img': "",
+            'part': "",
+            'name': "",
+            'xmin': "",
+            'ymin': "",
+            'xmax': "",
+            'ymax': "",
+            'confidence': "",
+        }
+
+        results = model_damage(train_img)
+
         dectectFile = results.files
-        print(dectectFile)
+
         detectImgPath = "C:/Users/JunPC/PycharmProjects/YoloFlask/runs/detect/exp/"
-
+        detectImg = detectImgPath + dectectFile[0]
         results.save()
-        print(type(results.pandas().xyxy[0]))
-        print(results.pandas().xyxy[0])
         res_json = results.pandas().xyxy[0].to_json()
-        # if not os.path.isfile(detectImgPath+dectectFile[0]):
-        #     results_dict = {
-        #         'img' : None
-        #     }
-        # else:
-        with open(detectImgPath+dectectFile[0], "rb") as image_file:
-            image_binary = image_file.read()
-            encoded_string = base64.b64encode(image_binary)
+        res_damage_json = json.loads(res_json)
 
-            results_dict = {
-                'img' : encoded_string.decode(),
-            }
+        if (res_damage_json['name']): # 불량으로 분류가 됬다면
+            with open(detectImg, "rb") as image_file:
 
-        img_json = json.dumps(results_dict)
-        img_json_new = img_json[1:7] + '{"0":' + img_json[8:]
-        print(img_json)
+                #Base64를 통하여 이미지 디코딩
+                image_binary = image_file.read()
+                encoded_string = base64.b64encode(image_binary)
 
-        results_json = res_json[0]+img_json_new+','+res_json[1:]
-        results_json = json.loads(results_json)
+                #결과값 저장
+                results_dict['type'] = "불량품"
+                results_dict['img'] = encoded_string.decode()
+                results_dict['part'] = category_class_part[res_damage_json['name']['0']]
+                results_dict['name'] = category_class_damage[res_damage_json['name']['0']]
+                results_dict['xmin'] = res_damage_json['xmin']['0']
+                results_dict['ymin'] = res_damage_json['ymin']['0']
+                results_dict['xmax'] = res_damage_json['xmax']['0']
+                results_dict['ymax'] = res_damage_json['ymax']['0']
+                results_dict['confidence'] = res_damage_json['confidence']['0']
 
-        if(results_json['name']):
-            print(results_json['name']['0'])
-            results_json['name']['0'] = category_class[results_json['name']['0']]
+                image_file.close()
+                os.remove(detectImg)
 
+        else: # 불량으로 검출이 안됬다면(정상)
+            os.remove(detectImg)
+            results_part = model_part(train_img) # 부품 분류 모델로 한번 더 detect
+            dectectFile = results_part.files
+            detectImg = detectImgPath + dectectFile[0]
+            results_part.save()
 
-        print(results_json)
+            res_json = results_part.pandas().xyxy[0].to_json()
+            res_part_json = json.loads(res_json)
+
+            if(res_part_json['name']): #분류가 됬다면 (부품 분류)
+                with open(detectImg, "rb") as image_file:
+                    image_binary = image_file.read()
+                    encoded_string = base64.b64encode(image_binary)
+
+                    results_dict['type'] = "정상품"
+                    results_dict['img'] = encoded_string.decode()
+                    results_dict['part'] = category_class_part[res_part_json['name']['0']]
+                    results_dict['name'] = "정상"
+                    results_dict['xmin'] = res_part_json['xmin']['0']
+                    results_dict['ymin'] = res_part_json['ymin']['0']
+                    results_dict['xmax'] = res_part_json['xmax']['0']
+                    results_dict['ymax'] = res_part_json['ymax']['0']
+                    results_dict['confidence'] = res_part_json['confidence']['0']
+
+                    image_file.close()
+                    os.remove(detectImg)
+
+            else:
+                os.remove(detectImg)
+                with open(train_img, "rb") as image_file:
+                    image_binary = image_file.read()
+                    encoded_string = base64.b64encode(image_binary)
+
+                    results_dict['type'] = "정상품"
+                    results_dict['img'] = encoded_string.decode()
+                    results_dict['name'] = "검출 실패"
+                    results_dict['part'] = "검출 실패"
+                    results_dict['xmin'] = 0.0
+                    results_dict['ymin'] = 0.0
+                    results_dict['xmax'] = 0.0
+                    results_dict['ymax'] = 0.0
+                    results_dict['confidence'] = 0.0
+
+                    image_file.close()
+
         os.remove(train_img)
-
-        return results_json
+        return results_dict
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=9090, debug=True)
