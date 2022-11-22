@@ -1,12 +1,6 @@
-import io
-import json
-from flask import Flask, jsonify, request
-from flask import make_response
-import torchvision.transforms as transforms
+from flask import Flask, request
 import torch
-from PIL import Image
 import os
-import pandas as pd
 import base64
 import json
 
