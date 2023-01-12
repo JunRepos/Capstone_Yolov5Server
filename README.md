@@ -3,6 +3,10 @@
 
 Github 링크 : https://github.com/JunRepos/Capstone_AI
 
+Yolov5 github : https://github.com/ultralytics/yolov5
+
+
+
 |                |      						 |
 |----------------|-------------------------------|
 |**사용 언어**    |Python                        |
