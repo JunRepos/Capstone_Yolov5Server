@@ -51,6 +51,7 @@
 **이미지 축소 예시**
 
 <img src="https://user-images.githubusercontent.com/70323287/211972994-e82911e5-640a-421a-a093-f95c38087cae.png" width="700" height="200"/>
+
 - 사진 한 개당 2.3mb에서 63kb로 축소 가능 
 
 ### 부품 종류 탐지 데이터셋 
